@@ -17,10 +17,20 @@ describe('interface-ipfs-core tests', function () {
   tests.bootstrap(defaultCommonFactory)
 
   tests.config(defaultCommonFactory, {
-    skip: [{
-      name: 'should set a number',
-      reason: 'Failing - needs to be fixed'
-    }]
+    skip: [
+      {
+        name: 'should set a number',
+        reason: 'Failing - needs to be fixed'
+      },
+      {
+        name: 'should output changes but not save them for dry run',
+        reason: 'not implemented'
+      },
+      {
+        name: 'should set a config profile',
+        reason: 'not implemented'
+      }
+    ]
   })
 
   tests.dag(defaultCommonFactory)
@@ -81,19 +91,11 @@ describe('interface-ipfs-core tests', function () {
 
   tests.miscellaneous(CommonFactory.create({
     // No need to stop, because the test suite does a 'stop' test.
-    createTeardown: () => cb => cb()
-  }), {
-    skip: [
-      {
-        name: 'should resolve an IPNS DNS link',
-        reason: 'TODO: IPNS resolve not yet implemented https://github.com/ipfs/js-ipfs/issues/1918'
-      },
-      {
-        name: 'should resolve IPNS link recursively',
-        reason: 'TODO: IPNS resolve not yet implemented https://github.com/ipfs/js-ipfs/issues/1918'
-      }
-    ]
-  })
+    createTeardown: () => cb => cb(),
+    spawnOptions: {
+      args: ['--pass ipfs-is-awesome-software', '--offline']
+    }
+  }))
 
   tests.name(CommonFactory.create({
     spawnOptions: {
