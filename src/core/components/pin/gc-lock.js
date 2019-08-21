@@ -12,11 +12,27 @@ class GCLock {
   }
 
   readLock (lockedFn, cb) {
-    return this.mutex.readLock(lockedFn, cb)
+    if (lockedFn) {
+      return this.mutex.readLock(lockedFn, cb)
+    }
+
+    return new Promise((resolve) => {
+      this.mutex.readLock((releaseLock) => {
+        resolve(releaseLock)
+      })
+    })
   }
 
   writeLock (lockedFn, cb) {
-    return this.mutex.writeLock(lockedFn, cb)
+    if (lockedFn) {
+      return this.mutex.writeLock(lockedFn, cb)
+    }
+
+    return new Promise((resolve) => {
+      this.mutex.writeLock((releaseLock) => {
+        resolve(releaseLock)
+      })
+    })
   }
 
   pullReadLock (lockedPullFn) {

@@ -1,13 +1,8 @@
 'use strict'
 
-const fs = require('fs')
+const fs = require('fs-extra')
+const glob = require('it-glob')
 const Path = require('path')
-const pull = require('pull-stream')
-const glob = require('glob')
-const cat = require('pull-cat')
-const defer = require('pull-defer')
-const pushable = require('pull-pushable')
-const map = require('async/map')
 const errCode = require('err-code')
 
 /**
@@ -22,10 +17,9 @@ const errCode = require('err-code')
 * @param {Boolean} [options.followSymlinks] follow symlinks
 * @returns {Function} pull stream source
 */
-module.exports = (...args) => {
+module.exports = async function * globSource (...args) {
   const options = typeof args[args.length - 1] === 'string' ? {} : args.pop()
   const paths = args
-  const deferred = defer.source()
 
   const globSourceOptions = {
     recursive: options.recursive,
@@ -37,33 +31,28 @@ module.exports = (...args) => {
   }
 
   // Check the input paths comply with options.recursive and convert to glob sources
-  map(paths, pathAndType, (err, results) => {
-    if (err) return deferred.abort(err)
+  for (const path of paths) {
+    const stat = await fs.stat(path)
+    const prefix = Path.dirname(path)
 
-    try {
-      const sources = results.map(res => toGlobSource(res, globSourceOptions))
-      deferred.resolve(cat(sources))
-    } catch (err) {
-      deferred.abort(err)
+    for await (const entry of toGlobSource({ path, type: stat.isDirectory() ? 'dir' : 'file', prefix }, globSourceOptions)) {
+      yield entry
     }
-  })
-
-  return pull(
-    deferred,
-    pull.map(({ path, contentPath }) => ({
-      path,
-      content: fs.createReadStream(contentPath)
-    }))
-  )
+  }
 }
 
-function toGlobSource ({ path, type }, options) {
+async function * toGlobSource ({ path, type, prefix }, options) {
   options = options || {}
 
   const baseName = Path.basename(path)
 
   if (type === 'file') {
-    return pull.values([{ path: baseName, contentPath: path }])
+    yield {
+      path: baseName.replace(prefix, ''),
+      content: fs.createReadStream(Path.isAbsolute(path) ? path : Path.join(process.cwd(), path))
+    }
+
+    return
   }
 
   if (type === 'dir' && !options.recursive) {
@@ -81,29 +70,12 @@ function toGlobSource ({ path, type }, options) {
     absolute: false
   })
 
-  // TODO: want to use pull-glob but it doesn't have the features...
-  const pusher = pushable()
-
-  glob('**/*', globOptions)
-    .on('match', m => pusher.push(m))
-    .on('end', () => pusher.end())
-    .on('abort', () => pusher.end())
-    .on('error', err => pusher.end(err))
-
-  return pull(
-    pusher,
-    pull.map(p => ({
-      path: `${baseName}/${toPosix(p)}`,
-      contentPath: Path.join(path, p)
-    }))
-  )
-}
-
-function pathAndType (path, cb) {
-  fs.stat(path, (err, stat) => {
-    if (err) return cb(err)
-    cb(null, { path, type: stat.isDirectory() ? 'dir' : 'file' })
-  })
+  for await (const p of glob(path, '**/*', globOptions)) {
+    yield {
+      path: toPosix(p.replace(prefix, '')),
+      content: fs.createReadStream(p)
+    }
+  }
 }
 
 const toPosix = path => path.replace(/\\/g, '/')
